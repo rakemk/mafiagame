@@ -215,7 +215,7 @@ const Auth = () => {
 
 	return (
 		<div
-			className="min-h-screen flex items-start sm:items-center justify-center p-4 bg-black/10"
+			className="min-h-screen flex items-center justify-center p-4 bg-black/10"
 			style={{
 				backgroundImage: "url('/images/capos-bg.jpg')",
 				backgroundRepeat: 'no-repeat',
@@ -223,11 +223,11 @@ const Auth = () => {
 				backgroundSize: 'cover',
 			}}
 		>
-			<div className="w-full max-w-md px-4 pt-8 sm:pt-0">
+			<div className="w-full max-w-md px-4">
 				<div className="relative">
-					<div className="bg-[rgba(17,24,39,0.92)] border border-yellow-700 rounded-2xl shadow-2xl max-h-[92vh] overflow-auto">
+					<div className="bg-[rgba(17,24,39,0.92)] border border-yellow-700 rounded-2xl shadow-2xl">
 						<div className="p-3 sm:p-6 text-center">
-							<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-widest text-yellow-300 drop-shadow-lg">CAPO'S EMPIRE</h1>
+							<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-widest text-yellow-300 drop-shadow-lg"> Sicario Crown Empire</h1>
 							<p className="text-sm text-muted-foreground mt-1">Enter the Family</p>
 						</div>
 

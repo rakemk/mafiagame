@@ -200,9 +200,9 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-4xl space-y-8 animate-fade-in">
-        <div className="text-center space-y-4">
+        <div className="text-center space-y-4 pl-16 sm:pl-0">
           <div className="flex items-center justify-center">
-            <h1 className="text-6xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+            <h1 className="text-4xl sm:text-6xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
             MAFIA
             </h1>
             {authUser && (
