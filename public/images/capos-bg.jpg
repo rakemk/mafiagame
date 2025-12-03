@@ -1,0 +1,7 @@
+REPLACE_THIS_IMAGE - placeholder
+
+This file is a placeholder for the Capo's Empire background image. Replace this file with your artwork (JPG/PNG/WebP) using the same filename `capos-bg.jpg`.
+
+Recommended sizes:
+- Desktop hero: 1600x900 or 1200x630
+- Mobile: crop appropriately or provide a responsive image named `capos-bg-mobile.jpg` and update `Auth.tsx` if desired.

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sign in - Neon Mafia Nights</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="card">
+      <h1>Sign in</h1>
+      <form id="loginForm">
+        <label> Email <input id="email" type="email" required></label>
+        <label> Password <input id="password" type="password" required></label>
+        <button type="submit">Sign in</button>
+      </form>
+      <p>Don't have an account? <a href="/register.html">Create one</a></p>
+
+      <div class="divider">or</div>
+      <div class="social">
+        <a id="googleBtn" class="btn google">Sign in with Google</a>
+      </div>
+
+      <p>Don't have an account? <a href="/register.html">Create account</a></p>
+      <div id="message" class="message"></div>
+    </main>
+
+    <script>
+      const API = window.location.origin;
+      // Form submit
+      document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        try {
+          const res = await fetch(API + '/auth/login', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            // If email not verified, show resend option
+            if (res.status === 403) {
+              document.getElementById('message').innerHTML = data.message + ' <button id="resend">Resend verification</button>';
+              document.getElementById('resend').addEventListener('click', async () => {
+                try {
+                  const r = await fetch(API + '/auth/resend-verification', {
+                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+                  });
+                  const dd = await r.json();
+                  document.getElementById('message').textContent = dd.message || 'Verification email sent.';
+                  if (dd.devLink) {
+                    const a = document.createElement('a'); a.href = dd.devLink; a.textContent = ' (dev link)'; a.target = '_blank'; document.getElementById('message').appendChild(a);
+                  }
+                } catch (e) {
+                  document.getElementById('message').textContent = 'Failed to resend verification email';
+                }
+              });
+            } else {
+              throw new Error(data.message || 'Login failed');
+            }
+            return;
+          }
+          window.location.href = '/dashboard.html';
+        } catch (err) {
+          document.getElementById('message').textContent = err.message;
+        }
+      });
+
+      document.getElementById('googleBtn').addEventListener('click', () => {
+        // Open /auth/google which redirects to Google consent
+        window.location.href = API + '/auth/google';
+      });
+    </script>
+  </body>
+</html>

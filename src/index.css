@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Casino/Poker Theme - Dark Background with Emerald Table */
+    --background: 220 25% 10%;
+    --foreground: 0 0% 95%;
+
+    --card: 220 20% 15%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 20% 15%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Emerald/Green felt table */
+    --primary: 145 60% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Gold accents */
+    --secondary: 45 90% 55%;
+    --secondary-foreground: 220 25% 10%;
+
+    --muted: 220 15% 20%;
+    --muted-foreground: 0 0% 65%;
+
+    /* Neon cyan for actions */
+    --accent: 180 75% 50%;
+    --accent-foreground: 220 25% 10%;
+
+    /* Red for danger/mafia */
+    --destructive: 0 75% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Police blue */
+    --police: 210 80% 50%;
+    --police-foreground: 0 0% 100%;
+
+    /* Doctor green */
+    --doctor: 145 60% 45%;
+    --doctor-foreground: 0 0% 100%;
+
+    --border: 220 15% 25%;
+    --input: 220 15% 20%;
+    --ring: 145 60% 45%;
+
+    --radius: 0.75rem;
+
+    /* Gradients */
+    --gradient-table: radial-gradient(ellipse at center, hsl(145 50% 25%), hsl(145 60% 15%));
+    --gradient-card: linear-gradient(135deg, hsl(220 20% 18%), hsl(220 15% 12%));
+    --glow-primary: 0 0 20px hsl(145 60% 35% / 0.5);
+    --glow-accent: 0 0 20px hsl(180 75% 50% / 0.5);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

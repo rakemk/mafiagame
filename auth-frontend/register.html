@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Register - Neon Mafia Nights</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="card">
+      <h1>Create Account</h1>
+      <form id="regForm">
+        <label> Full name <input id="fullname" type="text" required></label>
+        <label> Email <input id="email" type="email" required></label>
+        <label> Password <input id="password" type="password" required></label>
+        <button type="submit">Create account</button>
+      </form>
+      <p>Already have an account? <a href="/login.html">Sign in</a></p>
+      <div id="message" class="message"></div>
+    </main>
+
+    <script>
+      const API = window.location.origin;
+      document.getElementById('regForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fullName = document.getElementById('fullname').value;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        try {
+          const res = await fetch(API + '/auth/register', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fullName, email, password })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Registration failed');
+          window.location.href = '/dashboard.html';
+        } catch (err) {
+          document.getElementById('message').textContent = err.message;
+        }
+      });
+    </script>
+  </body>
+</html>

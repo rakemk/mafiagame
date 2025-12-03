@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dashboard - Neon Mafia Nights</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main class="card">
+      <h1>Welcome</h1>
+      <div id="user"></div>
+      <button id="logout">Sign out</button>
+    </main>
+    <script>
+      const API = window.location.origin;
+
+      async function load() {
+        try {
+          const res = await fetch(API + '/auth/me', { credentials: 'include' });
+          if (!res.ok) throw new Error('Not authenticated');
+          const data = await res.json();
+          document.getElementById('user').textContent = data.user.email + ' (' + (data.user.fullName||'') + ')';
+        } catch (err) {
+          window.location.href = '/login.html';
+        }
+      }
+      document.getElementById('logout').addEventListener('click', async () => {
+        await fetch(API + '/auth/logout', { method: 'POST', credentials: 'include' });
+        window.location.href = '/login.html';
+      });
+      load();
+    </script>
+  </body>
+</html>

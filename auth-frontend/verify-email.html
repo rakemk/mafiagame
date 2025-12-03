@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Verify Email - Neon Mafia Nights</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0} .card{width:400px;padding:24px;border-radius:8px;background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.1);text-align:center} .muted{color:#666}</style>
+  </head>
+  <body>
+    <main class="card">
+      <h1 id="title">Verifying your email...</h1>
+      <p id="message" class="muted">Please wait while we verify your address.</p>
+      <div id="actions" style="margin-top:16px"></div>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const status = params.get('status');
+      const API_BASE = window.location.origin; // same origin when server serves these pages
+
+      function show(title, message, actionHtml) {
+        document.getElementById('title').textContent = title;
+        document.getElementById('message').textContent = message;
+        document.getElementById('actions').innerHTML = actionHtml || '';
+      }
+
+      async function verifyWithBackend(t) {
+        try {
+          show('Verifying your email...', 'Please wait while we verify your address.');
+          const res = await fetch(`/auth/verify-email?token=${encodeURIComponent(t)}&api=1`, { headers: { Accept: 'application/json' }, credentials: 'include' });
+          const data = await res.json();
+          if (!res.ok) throw data;
+          show('Email verified', 'Your email was verified successfully. You are now signed in.', '<a href="/dashboard.html">Go to dashboard</a>');
+        } catch (err) {
+          const st = err && err.status ? err.status : (err && err.message) ? 'error' : 'invalid';
+          if (st === 'expired' || (err && err.status === 'expired')) {
+            show('Verification link expired', 'Your verification link has expired. Request a new one from the login page.', '<a href="/login.html">Sign in / Resend</a>');
+          } else if (st === 'invalid') {
+            show('Invalid link', 'This verification link is invalid. Request a new one from the login page.', '<a href="/login.html">Sign in / Resend</a>');
+          } else {
+            show('Verification failed', 'An error occurred while verifying your email. Please try again.', '<a href="/login.html">Sign in</a>');
+          }
+        }
+      }
+
+      if (token) {
+        // if token present in query, call backend verify endpoint (api mode)
+        verifyWithBackend(token);
+      } else if (status) {
+        if (status === 'success') show('Email verified', 'Your email was verified successfully. You are now signed in.', '<a href="/dashboard.html">Go to dashboard</a>');
+        else if (status === 'expired') show('Verification link expired', 'Your verification link has expired. Request a new one from the login page.', '<a href="/login.html">Sign in / Resend</a>');
+        else if (status === 'invalid') show('Invalid link', 'This verification link is invalid. Request a new one from the login page.', '<a href="/login.html">Sign in / Resend</a>');
+        else show('Verification', 'Status: ' + status, '<a href="/login.html">Sign in</a>');
+      } else {
+        show('Verify your email', 'No verification token found in the URL. Please use the link sent to your email.', '<a href="/login.html">Sign in</a>');
+      }
+    </script>
+  </body>
+</html>
