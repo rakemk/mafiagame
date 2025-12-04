@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import GameTable from "@/components/game/GameTable";
@@ -62,6 +62,7 @@ const GameRoom = () => {
   const [revealedPlayers, setRevealedPlayers] = useState<Player[] | null>(null);
   const [showEndModal, setShowEndModal] = useState<boolean>(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Generate a simple victory image as a PNG blob (client-side) to allow sharing to statuses
   const generateVictoryImageBlob = async (): Promise<Blob | null> => {
@@ -165,6 +166,38 @@ const GameRoom = () => {
   useEffect(() => {
     if (!roomId) return;
 
+    // If we were navigated here with an optimisticPlayer (e.g., from Join form), append it immediately
+    try {
+      const stateAny: any = (location && (location as any).state) || null;
+      const optimistic = stateAny?.optimisticPlayer ?? null;
+      if (optimistic && optimistic.room_id === roomId) {
+        setPlayers((prev) => {
+          // avoid duplicates
+          const exists = (prev || []).some((p) => p.id === optimistic.id || p.user_name === optimistic.user_name);
+          if (exists) return prev;
+          return [...(prev || []), optimistic];
+        });
+        try {
+          const name = typeof window !== "undefined" ? localStorage.getItem("playerName") : null;
+          if (name) {
+            const lookup = name.trim().toLowerCase();
+            const found = optimistic && (optimistic.user_name || "").trim().toLowerCase() === lookup ? optimistic : null;
+            setLocalPlayerId(found?.id ?? null);
+            setLocalPlayerStatus(found?.status ?? null);
+          }
+        } catch (_) {}
+
+        // remove optimistic state from history so it doesn't reapply on back/forward
+        try {
+          if (window && window.history && window.history.replaceState) {
+            const newState = { ...(window.history.state || {}), usr: undefined };
+            window.history.replaceState(newState, "");
+          }
+        } catch (_) {}
+      }
+
+    } catch (_) {}
+
     loadRoomData();
     
     // Set up realtime subscriptions
@@ -202,6 +235,52 @@ const GameRoom = () => {
 
     return () => {
       supabase.removeChannel(roomChannel);
+    };
+  }, [roomId]);
+
+  // Listen for in-page updates dispatched by child components (immediate refresh)
+  useEffect(() => {
+    const onPlayersUpdated = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent)?.detail;
+        if (!detail) return;
+        if (detail.roomId && detail.roomId !== roomId) return;
+        if (detail.players) {
+          setPlayers(detail.players);
+          try {
+            const name = typeof window !== "undefined" ? localStorage.getItem("playerName") : null;
+            if (name) {
+              const lookup = name.trim().toLowerCase();
+              const found = (detail.players || []).find((p: any) => (p.user_name || "").trim().toLowerCase() === lookup);
+              setLocalPlayerId(found?.id ?? null);
+              setLocalPlayerStatus(found?.status ?? null);
+            }
+          } catch (_) {}
+        } else {
+          loadPlayers();
+        }
+      } catch (_) {}
+    };
+
+    const onRoomUpdated = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent)?.detail;
+        if (!detail) return;
+        const incoming = detail.room;
+        if (!incoming) {
+          loadRoomData();
+          return;
+        }
+        if (incoming.id && incoming.id !== roomId) return;
+        setRoom(incoming);
+      } catch (_) {}
+    };
+
+    window.addEventListener("players:updated", onPlayersUpdated as EventListener);
+    window.addEventListener("room:updated", onRoomUpdated as EventListener);
+    return () => {
+      window.removeEventListener("players:updated", onPlayersUpdated as EventListener);
+      window.removeEventListener("room:updated", onRoomUpdated as EventListener);
     };
   }, [roomId]);
 

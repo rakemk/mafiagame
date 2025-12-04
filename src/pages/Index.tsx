@@ -66,6 +66,56 @@ const Index = () => {
         return;
       }
 
+      // Prevent joining another room if this client already joined one (local) or the account is already in a room (server)
+      try {
+        // local check: explicit currentRoomId key
+        const localCurrent = typeof window !== "undefined" ? localStorage.getItem("currentRoomId") : null;
+        if (localCurrent && localCurrent !== data.id) {
+          toast({ title: "Already In Room", description: "You are already in another room. Leave it before joining a different room.", variant: "destructive" });
+          setIsJoining(false);
+          navigate(`/room/${localCurrent}`);
+          return;
+        }
+
+        // local check: any stored playerId_{roomId} key
+        try {
+          if (typeof window !== "undefined") {
+            for (const k of Object.keys(localStorage)) {
+              if (k.startsWith("playerId_")) {
+                const rid = k.substring("playerId_".length);
+                if (rid && rid !== data.id && localStorage.getItem(k)) {
+                  toast({ title: "Already In Room", description: "You are already in another room. Leave it before joining a different room.", variant: "destructive" });
+                  setIsJoining(false);
+                  navigate(`/room/${rid}`);
+                  return;
+                }
+              }
+            }
+          }
+        } catch (_) {}
+
+        // server check: if authenticated, ensure account not already in another room
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          const me = userData?.user ?? null;
+          if (me && me.id) {
+            const { data: other, error: otherErr } = await supabase
+              .from("players")
+              .select("room_id")
+              .eq("user_id", me.id)
+              .neq("room_id", data.id)
+              .limit(1)
+              .maybeSingle();
+            if (!otherErr && other && (other as any).room_id) {
+              toast({ title: "Already In Room", description: "Your account is already in another room. Leave it before joining a different room.", variant: "destructive" });
+              setIsJoining(false);
+              navigate(`/room/${(other as any).room_id}`);
+              return;
+            }
+          }
+        } catch (_) {}
+      } catch (_) {}
+
       // Check capacity
       if (data.current_players >= data.max_players) {
         toast({
@@ -76,6 +126,7 @@ const Index = () => {
         return;
       }
 
+
       // Add player to players table
       // If this signed-in account already has a player in this room, avoid attaching the same user_id
       // so multiple players can play from the same email/account (e.g., local testing or siblings).
@@ -85,34 +136,70 @@ const Index = () => {
         seat_number: data.current_players,
         status: "alive",
       };
+
+      // Detect whether `players.user_id` exists in the schema. Some deployments may not have this column,
+      // so probe with a harmless select and fallback if it errors.
+      let canAttachUserId = false;
       if (authUser) {
         try {
-          const existing = await supabase
+          const { data: check, error: checkErr } = await (supabase as any)
             .from('players')
-            .select('id')
-            .eq('room_id', data.id)
-            .eq('user_id', authUser.id)
+            .select('user_id')
             .limit(1)
             .maybeSingle();
-          // If no existing player found for this account in the same room, attach user_id
-          if (!existing || (existing && !existing.data)) {
-            insertPayload.user_id = authUser.id;
-          } else {
-            // warn user they are creating an additional guest player
-            toast({ title: 'Note', description: 'Creating a guest player (same account already in room).', variant: 'default' });
+          if (!checkErr) {
+            canAttachUserId = true;
           }
         } catch (e) {
-          // if check fails, fall back to not attaching user_id to avoid blocking
-          console.warn('Failed to check existing players for user_id:', e);
+          // schema likely missing `user_id` — we'll proceed without attaching it.
+          canAttachUserId = false;
+        }
+
+        if (canAttachUserId) {
+          try {
+            const existing = await supabase
+              .from('players')
+              .select('id')
+              .eq('room_id', data.id)
+              .eq('user_id', authUser.id)
+              .limit(1)
+              .maybeSingle();
+            // If no existing player found for this account in the same room, attach user_id
+            if (!existing || (existing && !existing.data)) {
+              insertPayload.user_id = authUser.id;
+            } else {
+              // warn user they are creating an additional guest player
+              toast({ title: 'Note', description: 'Creating a guest player (same account already in room).', variant: 'default' });
+            }
+          } catch (e) {
+            // if check fails, fall back to not attaching user_id to avoid blocking
+            console.warn('Failed to check existing players for user_id:', e);
+            canAttachUserId = false;
+          }
+        } else {
+          try {
+            // eslint-disable-next-line no-console
+            console.log('players table missing `user_id` column; skipping user_id attach');
+          } catch (_) {}
         }
       }
 
-      await supabase.from("players").insert(insertPayload);
+      // Insert and select the inserted row so we can pass it optimistically to the room view
+      const { data: inserted, error: insertErr } = await supabase
+        .from("players")
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (insertErr) {
+        toast({ title: 'Join Failed', description: (insertErr as any)?.message || String(insertErr), variant: 'destructive' });
+        return;
+      }
 
       try {
         // debug
         // eslint-disable-next-line no-console
-        console.log('joinRoom: inserted player', insertPayload);
+        console.log('joinRoom: inserted player', inserted);
       } catch (_) {}
 
       // Increment current_players
@@ -127,7 +214,50 @@ const Index = () => {
         // ignore storage errors
       }
 
-      navigate(`/room/${data.id}`);
+      // Fetch latest players + room and dispatch in-page events so other open tabs update immediately
+      try {
+        const { data: latestPlayers } = await (supabase as any)
+          .from("players")
+          .select("id,user_name,seat_number,status,user_id")
+          .eq("room_id", data.id)
+          .order("seat_number");
+
+        const { data: latestRoom } = await supabase.from("rooms").select("*").eq("id", data.id).single();
+
+        try {
+          window.dispatchEvent(new CustomEvent("players:updated", { detail: { roomId: data.id, players: latestPlayers } }));
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent("room:updated", { detail: { room: latestRoom } }));
+        } catch (_) {}
+      } catch (e) {
+        try {
+          // eslint-disable-next-line no-console
+          console.warn('joinRoom: failed to fetch latest players/room', e);
+        } catch (_) {}
+      }
+
+      // Persist current room id locally so client won't join other rooms without leaving
+      try {
+        if (data && data.id) {
+          try {
+            localStorage.setItem("currentRoomId", data.id);
+          } catch (_) {}
+        }
+        if (inserted && inserted.id && data && data.id) {
+          try {
+            localStorage.setItem(`playerId_${data.id}`, String(inserted.id));
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      // Navigate to room and pass the inserted player so the room can show it immediately
+      try {
+        navigate(`/room/${data.id}`, { state: { optimisticPlayer: inserted } as any });
+      } catch (_) {
+        // fallback
+        navigate(`/room/${data.id}`);
+      }
     } catch (error) {
       toast({
         title: "Error",

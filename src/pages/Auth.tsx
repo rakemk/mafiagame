@@ -227,7 +227,7 @@ const Auth = () => {
 				<div className="relative">
 					<div className="bg-[rgba(17,24,39,0.92)] border border-yellow-700 rounded-2xl shadow-2xl">
 						<div className="p-3 sm:p-6 text-center">
-							<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-widest text-yellow-300 drop-shadow-lg"> Sicario Crown Empire</h1>
+							<h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-widest text-yellow-300 drop-shadow-lg"> Sicario Empire</h1>
 							<p className="text-sm text-muted-foreground mt-1">Enter the Family</p>
 						</div>
 

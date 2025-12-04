@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,72 @@ const GameLobby = ({ room, players, isCreator = false, localPlayerName = null }:
     })();
   };
 
+  const navigate = useNavigate();
+
+  const leaveRoom = async () => {
+    try {
+      // find local player id: prefer stored playerId_{roomId}, otherwise lookup by name
+      let pid: string | null = null;
+      try {
+        pid = typeof window !== "undefined" ? localStorage.getItem(`playerId_${room.id}`) : null;
+      } catch (_) {
+        pid = null;
+      }
+
+      if (!pid) {
+        const name = localPlayerName ?? (typeof window !== "undefined" ? localStorage.getItem("playerName") : null);
+        if (name) {
+          const found = players.find((p) => (p.user_name || "").trim().toLowerCase() === name.trim().toLowerCase());
+          if (found) pid = found.id;
+        }
+      }
+
+      if (!pid) {
+        toast({ title: "Not Found", description: "Could not find your player in this room.", variant: "destructive" });
+        return;
+      }
+
+      const ok = window.confirm("Are you sure you want to leave the room? This will remove you from the lobby.");
+      if (!ok) return;
+
+      // delete player row
+      const { error: delErr } = await supabase.from("players").delete().eq("id", pid).eq("room_id", room.id);
+      if (delErr) {
+        toast({ title: "Error", description: delErr.message || "Failed to leave room", variant: "destructive" });
+        return;
+      }
+
+      // decrement room count (best-effort)
+      try {
+        await supabase.from("rooms").update({ current_players: Math.max(0, players.length - 1) }).eq("id", room.id);
+      } catch (_) {}
+
+      // clear local storage keys for this room
+      try {
+        localStorage.removeItem(`playerId_${room.id}`);
+        const cur = localStorage.getItem("currentRoomId");
+        if (cur === room.id) localStorage.removeItem("currentRoomId");
+      } catch (_) {}
+
+      // fetch latest players + room and dispatch events
+      try {
+        const { data: latestPlayers } = await (supabase as any)
+          .from("players")
+          .select("id,user_name,seat_number,status,user_id")
+          .eq("room_id", room.id)
+          .order("seat_number");
+        const { data: latestRoom } = await supabase.from("rooms").select("*").eq("id", room.id).single();
+        try { window.dispatchEvent(new CustomEvent("players:updated", { detail: { roomId: room.id, players: latestPlayers } })); } catch (_) {}
+        try { window.dispatchEvent(new CustomEvent("room:updated", { detail: { room: latestRoom } })); } catch (_) {}
+      } catch (_) {}
+
+      toast({ title: "Left Room", description: "You have left the room." });
+      navigate("/");
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to leave room", variant: "destructive" });
+    }
+  };
+
   const joinAsPlayer = async () => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("playerName") : null;
     if (!stored || !stored.trim()) {
@@ -80,39 +147,137 @@ const GameLobby = ({ room, players, isCreator = false, localPlayerName = null }:
 
     setIsJoining(true);
     try {
-      await supabase.from("players").insert({
-        room_id: room.id,
-        user_name: stored,
-        seat_number: players.length,
-        status: "alive",
-      });
+      // Prevent joining another room if this client already has a player in a different room
+      try {
+        const localCurrent = typeof window !== "undefined" ? localStorage.getItem("currentRoomId") : null;
+        if (localCurrent && localCurrent !== room.id) {
+          toast({ title: "Already In Room", description: "You are already in another room. Leave it before joining a different room.", variant: "destructive" });
+          setIsJoining(false);
+          return;
+        }
+
+        if (typeof window !== "undefined") {
+          for (const k of Object.keys(localStorage)) {
+            if (k.startsWith("playerId_")) {
+              const rid = k.substring("playerId_".length);
+              if (rid && rid !== room.id && localStorage.getItem(k)) {
+                toast({ title: "Already In Room", description: "You are already in another room. Leave it before joining a different room.", variant: "destructive" });
+                setIsJoining(false);
+                return;
+              }
+            }
+          }
+        }
+
+        // server-side check for authenticated users
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          const me = userData?.user ?? null;
+          if (me && me.id) {
+            const { data: other, error: otherErr } = await supabase
+              .from("players")
+              .select("room_id")
+              .eq("user_id", me.id)
+              .neq("room_id", room.id)
+              .limit(1)
+              .maybeSingle();
+            if (!otherErr && other && (other as any).room_id) {
+              toast({ title: "Already In Room", description: "Your account is already in another room. Leave it before joining a different room.", variant: "destructive" });
+              setIsJoining(false);
+              return;
+            }
+          }
+        } catch (_) {}
+      } catch (_) {}
+
+      const nameTrim = (stored || "").trim();
+      const seatNumber = typeof room.current_players === "number" ? room.current_players : players.length;
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from("players")
+        .insert({
+          room_id: room.id,
+          user_name: nameTrim,
+          seat_number: seatNumber,
+          status: "alive",
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        const msg = (insertErr as any)?.message || String(insertErr);
+        toast({ title: "Join Failed", description: msg, variant: "destructive" });
+        setIsJoining(false);
+        return;
+      }
+
+      try {
+        // eslint-disable-next-line no-console
+        console.log("GameLobby.joinAsPlayer: inserted", inserted);
+      } catch (_) {}
+
+      // optimistic UI: immediately notify parent with appended player so joiner sees their name
+      try {
+        const optimistic = [...players, inserted];
+        try {
+          // eslint-disable-next-line no-console
+          console.log('GameLobby.joinAsPlayer: dispatch optimistic players', optimistic);
+        } catch (_) {}
+        window.dispatchEvent(new CustomEvent("players:updated", { detail: { roomId: room.id, players: optimistic } }));
+      } catch (_) {}
+
+      // best-effort: update room current players count
+      try {
+        await supabase
+          .from("rooms")
+          .update({ current_players: (seatNumber || 0) + 1 })
+          .eq("id", room.id);
+      } catch (_) {}
+
+      // fetch latest players + room and dispatch in-page events so parent updates immediately
+      try {
+        const { data: latestPlayers } = await (supabase as any)
+          .from("players")
+          .select("id,user_name,seat_number,status,user_id")
+          .eq("room_id", room.id)
+          .order("seat_number");
+
+        const { data: latestRoom } = await supabase.from("rooms").select("*").eq("id", room.id).single();
 
         try {
-          // debug
-          // eslint-disable-next-line no-console
-          console.log('GameLobby.joinAsPlayer: inserted', { room_id: room.id, user_name: playerName, seat_number: players.length });
+          window.dispatchEvent(new CustomEvent("players:updated", { detail: { roomId: room.id, players: latestPlayers } }));
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent("room:updated", { detail: { room: latestRoom } }));
         } catch (_) {}
 
-      await supabase
-        .from("rooms")
-        .update({ current_players: players.length + 1 })
-        .eq("id", room.id);
+        try {
+          // eslint-disable-next-line no-console
+          console.log('GameLobby.joinAsPlayer: latestPlayers', latestPlayers);
+        } catch (_) {}
+      } catch (fetchErr) {
+        try {
+          // eslint-disable-next-line no-console
+          console.warn('GameLobby.joinAsPlayer: failed to fetch latest players/room', fetchErr);
+        } catch (_) {}
+      }
 
-      toast({
-        title: "Joined!",
-        description: "You have joined the game",
-      });
+      toast({ title: "Joined!", description: `You joined as ${inserted?.user_name ?? stored}` });
       try {
-        localStorage.setItem("playerName", stored);
+        localStorage.setItem("playerName", nameTrim);
       } catch (e) {
         // ignore localStorage errors
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to join game",
-        variant: "destructive",
-      });
+
+      try {
+        if (inserted && inserted.id) {
+          try { localStorage.setItem(`playerId_${room.id}`, String(inserted.id)); } catch (_) {}
+        }
+        try { localStorage.setItem('currentRoomId', room.id); } catch (_) {}
+      } catch (_) {}
+    } catch (error: any) {
+      const msg = error?.message || String(error || "Failed to join");
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setIsJoining(false);
     }
@@ -213,6 +378,21 @@ const GameLobby = ({ room, players, isCreator = false, localPlayerName = null }:
             </div>
           </CardContent>
         </Card>
+
+        {/* Leave room (only for non-creators) */}
+        {!isCreator && (
+          <Card className="bg-card/50 border-border">
+            <CardHeader>
+              <CardTitle>Leave Room</CardTitle>
+              <CardDescription>Remove yourself from the lobby and return to home</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-start">
+                <Button variant="destructive" onClick={leaveRoom}>Exit Room</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-card/50 border-border">
           <CardHeader>
