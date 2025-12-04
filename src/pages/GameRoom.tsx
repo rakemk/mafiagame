@@ -310,6 +310,30 @@ const GameRoom = () => {
     return () => clearInterval(id);
   }, [gameState]);
 
+  // Polling fallback: if realtime fails or is delayed, poll players periodically while in lobby
+  useEffect(() => {
+    if (!roomId) return;
+    if (gameState?.phase !== "lobby") return;
+    let id: any = null;
+    try {
+      // eslint-disable-next-line no-console
+      console.log('GameRoom: starting players polling fallback (3s)');
+    } catch (_) {}
+    id = setInterval(() => {
+      try {
+        loadPlayers();
+      } catch (_) {}
+    }, 3000);
+
+    return () => {
+      try {
+        // eslint-disable-next-line no-console
+        console.log('GameRoom: stopping players polling fallback');
+      } catch (_) {}
+      if (id) clearInterval(id);
+    };
+  }, [roomId, gameState?.phase]);
+
   // When day countdown reaches zero, the creator tallies votes and moves to night
   useEffect(() => {
     if (remainingSeconds !== 0) return;
