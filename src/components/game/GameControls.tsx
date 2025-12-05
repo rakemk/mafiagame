@@ -67,10 +67,10 @@ const GameControls = ({ room, gameState, players }: GameControlsProps) => {
       console.warn("StartGame blocked: creator=", roomCreator, "local=", localNameTrimmed);
       return;
     }
-    if (players.length < 4) {
+    if (players.length < 10) {
       toast({
         title: "Not Enough Players",
-        description: "Need at least 4 players to start",
+        description: "Need at least 10 players to start",
         variant: "destructive",
       });
       return;
